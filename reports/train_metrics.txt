@@ -1,0 +1,3 @@
+mean_absolute_error: 11.000613174922925
+mean_squared_error: 186.50504971295132
+explained_variance_score: 0.2301825409356344

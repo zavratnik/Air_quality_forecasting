@@ -1,0 +1,481 @@
+name: project_dev
+on:
+  schedule:
+    - cron: '00 12 * * *'
+
+jobs:
+  fetch_data_air:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    outputs:
+      sha_new: ${{ steps.sha_new.outputs.SHA_NEW }}
+    steps:
+      - uses: actions/checkout@v3
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.ACTIONS_TOKEN }}
+      - name: Install Poetry
+        run: pipx install poetry
+      - name: Set up Python 3.10.10
+        uses: actions/setup-python@v1
+        with:
+          python-version: 3.10.10
+          cache: poetry
+      - name: Install dependencies
+        run: poetry install --no-interaction --no-root
+      - name: Pytest testing
+        run: poetry run pytest -k "test_fetch_data_air" src/tests
+      - name: Fetch air data
+        run: poetry run python src/data/fetch_data_air.py
+      - name: Initialize DVC
+        run: |
+          pip install dvc-s3
+      - name: Add DVC remote
+        run: |
+          dvc remote modify origin endpointurl https://dagshub.com/zavratnikj/IIS.s3
+          dvc remote modify origin --local access_key_id ${{ secrets.DVC_ACCES_KEY_ID }}
+          dvc remote modify origin --local secret_access_key ${{ secrets.DVC_SECRET_ACCESS_KEY }}
+      - name: Add data to DVC
+        run:
+          dvc add data/raw/air/neobdelani_podatki.json
+      - name: Push data to DVC
+        run: dvc push -r origin
+      - name: Commit changes
+        run: |
+          git config --global user.email "jure.zavratnik@student.um.si"
+          git config --global user.name "zavratnikj"
+          git add data/raw/air/neobdelani_podatki.json.dvc
+          git commit -m "Fetch data air"
+      - name: Push changes
+        uses: ad-m/github-push-action@master
+        with:
+          github_token: ${{ secrets.ACTIONS_TOKEN }}
+          branch: main
+      - name: Get SHA and store it
+        id: sha_new
+        run: |
+          echo "SHA_NEW=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+
+  process_data_air:
+    needs: fetch_data_air
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    outputs:
+      sha_new: ${{ steps.sha_new.outputs.SHA_NEW }}
+    steps:
+      - name: Set SHA_NEW environment variable
+        env:
+          SHA_NEW: "${{ needs.fetch_data_air.outputs.sha_new }}"
+        run: echo "$SHA_NEW"
+      - uses: actions/checkout@v3
+        with:
+          ref: ${{ needs.fetch_data_air.outputs.sha_new }}
+          fetch-depth: 0
+          token: ${{ secrets.ACTIONS_TOKEN }}
+      - name: Install Poetry
+        run: pipx install poetry
+      - name: Set up Python 3.10.10
+        uses: actions/setup-python@v1
+        with:
+          python-version: 3.10.10
+          cache: poetry
+      - name: Install dependencies
+        run: poetry install --no-interaction --no-root
+      - name: Initialize DVC
+        run: |
+          pip install dvc-s3
+      - name: Add DVC remote
+        run: |
+          dvc remote modify origin endpointurl https://dagshub.com/zavratnikj/IIS.s3
+          dvc remote modify origin --local access_key_id ${{ secrets.DVC_ACCES_KEY_ID }}
+          dvc remote modify origin --local secret_access_key ${{ secrets.DVC_SECRET_ACCESS_KEY }}
+      - name: Pull data from DVC
+        run: |
+          dvc pull -r origin
+      - name: Process data air
+        run: poetry run python src/data/process_data_air.py
+      - name: Add data to DVC
+        run:
+          dvc add data/processed/air/obdelani_podatki_air.csv
+      - name: Push data to DVC
+        run: dvc push -r origin
+      - name: Commit changes
+        run: |
+          git config --global user.email "jure.zavratnik@student.um.si"
+          git config --global user.name "zavratnikj"
+          git add data/processed/air/obdelani_podatki_air.csv.dvc
+          git commit -m "Processed data air"
+      - name: Push changes
+        uses: ad-m/github-push-action@master
+        with:
+          github_token: ${{ secrets.ACTIONS_TOKEN }}
+          branch: main
+      - name: Get SHA and store it
+        id: sha_new
+        run: |
+          echo "SHA_NEW=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+          
+  fetch_data_weather:
+    needs: process_data_air
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    outputs:
+      sha_new: ${{ steps.sha_new.outputs.SHA_NEW }}
+    steps:
+      - name: Set SHA_NEW environment variable
+        env:
+          SHA_NEW: "${{ needs.process_data_air.outputs.sha_new }}"
+        run: echo "$SHA_NEW"
+      - uses: actions/checkout@v3
+        with:
+          ref: ${{ needs.process_data_air.outputs.sha_new }}
+          fetch-depth: 0
+          token: ${{ secrets.ACTIONS_TOKEN }}
+      - name: Install Poetry
+        run: pipx install poetry
+      - name: Set up Python 3.10.10
+        uses: actions/setup-python@v1
+        with:
+          python-version: 3.10.10
+          cache: poetry
+      - name: Install dependencies
+        run: poetry install --no-interaction --no-root
+      - name: Pytest testing
+        run: poetry run pytest -k "test_fetch_data_weather" src/tests
+      - name: Initialize DVC
+        run: |
+          pip install dvc-s3
+      - name: Add DVC remote
+        run: |
+          dvc remote modify origin endpointurl https://dagshub.com/zavratnikj/IIS.s3
+          dvc remote modify origin --local access_key_id ${{ secrets.DVC_ACCES_KEY_ID }}
+          dvc remote modify origin --local secret_access_key ${{ secrets.DVC_SECRET_ACCESS_KEY }}
+      - name: Pull data from DVC
+        run: |
+          dvc pull -r origin
+      - name: Process data air
+        run: poetry run python src/data/fetch_data_weather.py
+      - name: Add data to DVC
+        run: |
+          dvc add data/raw/weather/neobdelani_podatki.json
+          dvc add data/raw/weather/future_3_days.json
+      - name: Push data to DVC
+        run: dvc push -r origin
+      - name: Commit changes
+        run: |
+          git config --global user.email "jure.zavratnik@student.um.si"
+          git config --global user.name "zavratnikj"
+          git add data/raw/weather/neobdelani_podatki.json.dvc
+          git add data/raw/weather/future_3_days.json.dvc
+          git commit -m "Fetch data weather"
+      - name: Push changes
+        uses: ad-m/github-push-action@master
+        with:
+          github_token: ${{ secrets.ACTIONS_TOKEN }}
+          branch: main
+      - name: Get SHA and store it
+        id: sha_new
+        run: |
+          echo "SHA_NEW=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+
+  process_data_weather:
+    needs: fetch_data_weather
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    outputs:
+      sha_new: ${{ steps.sha_new.outputs.SHA_NEW }}
+    steps:
+      - name: Set SHA_NEW environment variable
+        env:
+          SHA_NEW: "${{ needs.fetch_data_weather.outputs.sha_new }}"
+        run: echo "$SHA_NEW"
+      - uses: actions/checkout@v3
+        with:
+          ref: ${{ needs.fetch_data_weather.outputs.sha_new }}
+          fetch-depth: 0
+          token: ${{ secrets.ACTIONS_TOKEN }}
+      - name: Install Poetry
+        run: pipx install poetry
+      - name: Set up Python 3.10.10
+        uses: actions/setup-python@v1
+        with:
+          python-version: 3.10.10
+          cache: poetry
+      - name: Install dependencies
+        run: poetry install --no-interaction --no-root
+      - name: Initialize DVC
+        run: |
+          pip install dvc-s3
+      - name: Add DVC remote
+        run: |
+          dvc remote modify origin endpointurl https://dagshub.com/zavratnikj/IIS.s3
+          dvc remote modify origin --local access_key_id ${{ secrets.DVC_ACCES_KEY_ID }}
+          dvc remote modify origin --local secret_access_key ${{ secrets.DVC_SECRET_ACCESS_KEY }}
+      - name: Pull data from DVC
+        run: |
+          dvc pull -r origin
+      - name: Process data weather
+        run: poetry run python src/data/process_data_weather.py
+      - name: Add data to DVC
+        run: |
+          dvc add data/processed/weather/obdelani_podatki_weather.csv
+          dvc add data/processed/weather/future_3_days.csv
+      - name: Push data to DVC
+        run: dvc push -r origin
+      - name: Commit changes
+        run: |
+          git config --global user.email "jure.zavratnik@student.um.si"
+          git config --global user.name "zavratnikj"
+          git add data/processed/weather/obdelani_podatki_weather.csv.dvc
+          git add data/processed/weather/future_3_days.csv.dvc
+          git commit -m "Fetch data weather"
+      - name: Push changes
+        uses: ad-m/github-push-action@master
+        with:
+          github_token: ${{ secrets.ACTIONS_TOKEN }}
+          branch: main
+      - name: Get SHA and store it
+        id: sha_new
+        run: |
+          echo "SHA_NEW=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+
+  process_data:
+    needs: process_data_weather
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    outputs:
+      sha_new: ${{ steps.sha_new.outputs.SHA_NEW }}
+    steps:
+      - name: Set SHA_NEW environment variable
+        env:
+          SHA_NEW: ${{ needs.process_data_weather.outputs.sha_new }}
+        run: echo "$SHA_NEW"
+      - uses: actions/checkout@v3
+        with:
+          ref: ${{ needs.process_data_weather.outputs.sha_new }}
+          fetch-depth: 0
+          token: ${{ secrets.ACTIONS_TOKEN }}
+      - name: Install Poetry
+        run: pipx install poetry
+      - name: Set up Python 3.10.10
+        uses: actions/setup-python@v1
+        with:
+          python-version: 3.10.10
+          cache: poetry
+      - name: Install dependencies
+        run: poetry install --no-interaction --no-root
+      - name: Initialize DVC
+        run: |
+          pip install dvc-s3
+      - name: Add DVC remote
+        run: |
+          dvc remote modify origin endpointurl https://dagshub.com/zavratnikj/IIS.s3
+          dvc remote modify origin --local access_key_id ${{ secrets.DVC_ACCES_KEY_ID }}
+          dvc remote modify origin --local secret_access_key ${{ secrets.DVC_SECRET_ACCESS_KEY }}
+      - name: Pull data from DVC
+        run: |
+          dvc pull -r origin
+      - name: Process data
+        run: poetry run python src/data/process_data.py
+      - name: Add data to DVC
+        run: |
+          dvc add data/processed/current_data.csv
+          dvc add data/processed/weather/last_3_days.csv
+      - name: Push data to DVC
+        run: dvc push -r origin
+      - name: Commit changes
+        run: |
+          git config --global user.email "jure.zavratnik@student.um.si"
+          git config --global user.name "zavratnikj"
+          git add data/processed/current_data.csv.dvc
+          git add data/processed/weather/last_3_days.csv.dvc
+          git commit -m "Process data"
+      - name: Push changes
+        uses: ad-m/github-push-action@master
+        with:
+          github_token: ${{ secrets.ACTIONS_TOKEN }}
+          branch: main
+      - name: Get SHA and store it
+        id: sha_new
+        run: |
+          echo "SHA_NEW=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+
+  validate_data:
+    needs: process_data
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    outputs:
+      sha_new: ${{ steps.sha_new.outputs.SHA_NEW }}
+    steps:
+      - name: Set SHA_NEW environment variable
+        env:
+          SHA_NEW: ${{ needs.process_data.outputs.sha_new }}
+        run: echo "$SHA_NEW"
+      - uses: actions/checkout@v3
+        with:
+          ref: ${{ needs.process_data.outputs.sha_new }}
+          fetch-depth: 0
+          token: ${{ secrets.ACTIONS_TOKEN }}
+      - name: Install Poetry
+        run: pipx install poetry
+      - name: Set up Python 3.10.10
+        uses: actions/setup-python@v1
+        with:
+          python-version: 3.10.10
+          cache: poetry
+      - name: Install dependencies
+        run: poetry install --no-interaction --no-root
+      - name: Initialize DVC
+        run: |
+          pip install dvc-s3
+      - name: Add DVC remote
+        run: |
+          dvc remote modify origin endpointurl https://dagshub.com/zavratnikj/IIS.s3
+          dvc remote modify origin --local access_key_id ${{ secrets.DVC_ACCES_KEY_ID }}
+          dvc remote modify origin --local secret_access_key ${{ secrets.DVC_SECRET_ACCESS_KEY }}
+      - name: Pull data from DVC
+        run: |
+          dvc pull -r origin
+      - name: Validate current_data
+        run: poetry run great_expectations checkpoint run my_checkpoint
+      - name: Deploy DataDocs to Netlify
+        uses: nwtgck/actions-netlify@v1.2
+        with:
+          publish-dir: "great_expectations/uncommitted/data_docs/local_site"
+          production-deploy: true
+        env:
+          NETLIFY_AUTH_TOKEN: ${{ secrets.NETLIFY_AUTH_TOKEN }}
+          NETLIFY_SITE_ID: ${{ secrets.NETLIFY_SITE_ID }}
+      - name: Get SHA and store it
+        id: sha_new
+        run: |
+          echo "SHA_NEW=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+    
+  test_data:
+    needs: process_data
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    outputs:
+      sha_new: ${{ steps.sha_new.outputs.SHA_NEW }}
+    steps:
+      - name: Set SHA_NEW environment variable
+        env:
+          SHA_NEW: ${{ needs.process_data.outputs.sha_new }}
+        run: echo "$SHA_NEW"
+      - uses: actions/checkout@v3
+        with:
+          ref: ${{ needs.process_data.outputs.sha_new }}
+          fetch-depth: 0
+          token: ${{ secrets.ACTIONS_TOKEN }}
+      - name: Install Poetry
+        run: pipx install poetry
+      - name: Set up Python 3.10.10
+        uses: actions/setup-python@v1
+        with:
+          python-version: 3.10.10
+          cache: poetry
+      - name: Install dependencies
+        run: poetry install --no-interaction --no-root
+      - name: Initialize DVC
+        run: |
+            pip install dvc-s3
+      - name: Add DVC remote
+        run: |
+          dvc remote modify origin endpointurl https://dagshub.com/zavratnikj/IIS.s3
+          dvc remote modify origin --local access_key_id ${{ secrets.DVC_ACCES_KEY_ID }}
+          dvc remote modify origin --local secret_access_key ${{ secrets.DVC_SECRET_ACCESS_KEY }}
+      - name: Pull data from DVC
+        run: |
+          dvc pull -r origin
+      - name: Test data
+        run: poetry run python src/data/data_stability_test.py
+      - name: Commit changes
+        run: |
+          git config --global user.email "jure.zavratnik@student.um.si"
+          git config --global user.name "zavratnikj"
+          git add reports/DataDriftPreset_report.html
+          git add reports/DataStabilityTest_report.html
+          git commit -m "Test data"
+      - name: Push changes
+        uses: ad-m/github-push-action@master
+        with:
+          github_token: ${{ secrets.ACTIONS_TOKEN }}
+          branch: main
+      - name: Get SHA and store it
+        id: sha_new
+        run: |
+          echo "SHA_NEW=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+  
+  finalize_data_processing:
+    needs: [validate_data, test_data, process_data  ]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    outputs:
+      sha_new: ${{ steps.sha_new.outputs.SHA_NEW }}
+    steps:
+      - name: Set SHA_NEW environment variable
+        env:
+          SHA_NEW: ${{ needs.test_data.outputs.sha_new }}
+        run: echo "$SHA_NEW"
+      - uses: actions/checkout@v3
+        with:
+          ref: ${{ needs.test_data.outputs.sha_new }}
+          fetch-depth: 0
+          token: ${{ secrets.ACTIONS_TOKEN }}
+      - name: Install Poetry
+        run: pipx install poetry
+      - name: Set up Python 3.10.10
+        uses: actions/setup-python@v1
+        with:
+          python-version: 3.10.10
+          cache: poetry
+      - name: Install dependencies
+        run: poetry install --no-interaction --no-root
+      - name: Initialize DVC
+        run: |
+          pip install dvc-s3
+      - name: Add DVC remote
+        run: |
+          dvc remote modify origin endpointurl https://dagshub.com/zavratnikj/IIS.s3
+          dvc remote modify origin --local access_key_id ${{ secrets.DVC_ACCES_KEY_ID }}
+          dvc remote modify origin --local secret_access_key ${{ secrets.DVC_SECRET_ACCESS_KEY }}
+      - name: Pull data from DVC
+        run: |
+          dvc pull -r origin
+      - name: Update reference_data.csv if validation and testing are successful
+        run: cp data/processed/current_data.csv data/processed/reference_data.csv
+      - name: Train test split
+        run: poetry run python src/data/train_test_split.py
+      - name: Train model
+        run: poetry run python src/models/train_model.py
+      - name: Add data to DVC
+        run: |
+          dvc add data/processed/reference_data.csv
+          dvc add data/processed/train.csv
+          dvc add data/processed/test.csv
+      - name: Push data to DVC
+        run: dvc push -r origin
+      - name: Commit changes
+        run: |
+          git config --global user.email "jure.zavratnik@student.um.si"
+          git config --global user.name "zavratnikj"
+          git add data/processed/reference_data.csv.dvc
+          git add data/processed/train.csv.dvc
+          git add data/processed/test.csv.dvc  
+          git add reports/train_metrics.txt
+          git add models/model.pkl        
+          git commit -m "Train data, test data, train model"
+      - name: Push changes
+        uses: ad-m/github-push-action@master
+        with:
+          github_token: ${{ secrets.ACTIONS_TOKEN }}
+          branch: main
+        

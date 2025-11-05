@@ -1,0 +1,4 @@
+outs:
+- md5: bced86ec2ba7696066a8fe9b789ff70f
+  size: 45311
+  path: obdelani_podatki_weather.csv

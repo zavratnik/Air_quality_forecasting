@@ -1,0 +1,4 @@
+outs:
+- md5: 3500bddd4a13cd57630b452d4a206795
+  size: 359
+  path: last_3_days.csv

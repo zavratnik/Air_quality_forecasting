@@ -1,0 +1,4 @@
+outs:
+- md5: a475c50e3d74e28fb42331d1b705ecb2
+  size: 23953
+  path: obdelani_podatki_air.csv

@@ -1,0 +1,163 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Air Quality Prediction</title>
+    <!-- Load Bootstrap -->
+    <link rel="stylesheet" href="https://maxcdn.bootstrapcdn.com/bootstrap/3.4.1/css/bootstrap.min.css">
+    <script src="https://ajax.googleapis.com/ajax/libs/jquery/3.6.3/jquery.min.js"></script>
+    <script src="https://maxcdn.bootstrapcdn.com/bootstrap/3.4.1/js/bootstrap.min.js"></script>
+    <script src="https://cdn.plot.ly/plotly-latest.min.js"></script>
+</head>
+<body>
+<div class="container-fluid">
+    <div class="row">
+        <div class="col-md-12">
+            <h1 style="text-align: center;">Air Quality in Maribor</h1>
+            <p style="text-align: center; font-size: 1.5em;">Last updated: {{ last_date }}:00</p>
+        </div>
+    </div>
+    <div class="row">
+        <div class="col-sm-2 bg-light">
+            <div>
+                <h5>Current Weather Conditions</h5>
+                <table class="table table-striped"
+                       style="border: 2px solid limegreen; border-collapse: collapse; box-shadow: 0px 0px 10px rgba(0,0,0,0.5);">
+                    <tbody>
+                    <tr>
+                        <td>Temperature</td>
+                        <td>{{ temperature }} &#8451;</td>
+                    </tr>
+                    <tr>
+                        <td>Pressure</td>
+                        <td>{{ pressure }} hPa</td>
+                    </tr>
+                    <tr>
+                        <td>Humidity</td>
+                        <td>{{ humidity }} %</td>
+                    </tr>
+                    <tr>
+                        <td>Wind Speed</td>
+                        <td>{{ wind_speed }} m/s</td>
+                    </tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+        <div class="col-sm-10">
+            <div class="mb-3">
+                <h5>Pollutants</h5>
+            </div>
+            <table class="table"
+                   style="border: 2px solid limegreen; border-collapse: separate; box-shadow: 0px 0px 10px rgba(0,0,0,0.5);">
+                <thead>
+                <thead>
+                <tr>
+                    <th style="width: 20%;">Pollutant</th>
+                    <th style="width: 65%;"></th>
+                    <th style="width: 15%;">Concentration (µg/m³)</th>
+                </tr>
+                </thead>
+                <tbody>
+                <tr>
+                    <td>NO2</td>
+                    <td style="text-align: center; vertical-align: middle;">
+                        <div style="background-image: linear-gradient(to right, limegreen {{no2_percentage}}%, transparent 0%); border-radius: 10px;
+                        height: 0.5em; width: 80%; box-shadow: 0px 0px 10px rgba(0,0,0,0.5); margin: auto;"></div>
+                    </td>
+                    <td>{{ no2 }}</td>
+                </tr>
+                <tr>
+                    <td>PM2.5</td>
+                    <td style="text-align: center; vertical-align: middle;">
+                        <div style="background-image: linear-gradient(to right, limegreen {{pm25_percentage}}%, transparent 0%); border-radius: 10px;
+                        height: 0.5em; width: 80%; box-shadow: 0px 0px 10px rgba(0,0,0,0.5); margin: auto;"></div>
+                    </td>
+                    <td>{{ pm25 }}</td>
+                </tr>
+                <tr>
+                    <td>BENZEN</td>
+                    <td style="text-align: center; vertical-align: middle;">
+                        <div style="background-image: linear-gradient(to right, limegreen {{benzen_percentage}}%, transparent 0%); border-radius: 10px;
+                        height: 0.5em; width: 80%; box-shadow: 0px 0px 10px rgba(0,0,0,0.5); margin: auto;"></div>
+                    </td>
+                    <td>{{ benzen }}</td>
+                </tr>
+                <tr>
+                    <td>PM10</td>
+                    <td style="text-align: center; vertical-align: middle;">
+                        <div style="background-image: linear-gradient(to right, limegreen {{pm10_percentage}}%, transparent 0%); border-radius: 10px;
+                        height: 0.5em; width: 80%; box-shadow: 0px 0px 10px rgba(0,0,0,0.5); margin: auto;"></div>
+                    </td>
+                    <td>{{ pm10 }}</td>
+                </tr>
+                </tbody>
+            </table>
+            <table class="table"
+                   style="border: 2px solid limegreen; border-collapse: separate; box-shadow: 0px 0px 10px rgba(0,0,0,0.5);">
+                <thead>
+                <thead>
+                <tr>
+                    <th style="width: 20%;">Day</th>
+                    <th style="width: 60%;">Pollution level</th>
+                    <th style="width: 10%;">Temperature</th>
+                    <th style="width: 10%;">Wind</th>
+                </tr>
+                </thead>
+                <tbody>
+                {% for item in data_last %}
+                <tr>
+                    <td>{{ item['day'] }}.{{ item['month'] }}</td>
+                    <td>{{ item['mean_pm10'] | int}} PM10</td>
+                    <td>{{ item['max_temp'] | int }}&#8451; &nbsp; &nbsp;{{ item['min_temp'] | int }}&#8451;</td>
+                    <td>{{ item['mean_wind_speed'] | round(1) }} km/h</td>
+                </tr>
+                {% endfor %}
+                {% for item in data_future %}
+                <tr>
+                    <td>{{ item['day'] }}.{{ item['month'] }}</td>
+                    <td id="pollution-level-{{ loop.index }}"></td>
+                    <td>{{ item['temp_max'] | int }}&#8451; &nbsp; &nbsp;{{ item['temp_min'] | int }}&#8451;</td>
+                    <td>{{ item['wind_speed'] | round(1) }} km/h</td>
+                </tr>
+                {% endfor %}
+                </tbody>
+            </table>
+            <div>
+                <img src="static/pm10_concentration.png" alt="Image">
+            </div>
+        </div>
+
+    </div>
+</div>
+
+<script>
+    const data = {{data_future | tojson}};
+    for (let i = 0; i < data.length; i++) {
+        const input_data = {
+            temp: data[i].temp,
+            pressure: data[i].pressure,
+            humidity: data[i].humidity,
+            wind_speed: data[i].wind_speed,
+            year: data[i].year,
+            month: data[i].month,
+            day: data[i].day,
+            hour: data[i].time
+        };
+        fetch('/air/predict', {
+            method: 'POST',
+            body: JSON.stringify(input_data),
+            headers: {
+                'Content-Type': 'application/json'
+            }
+        })
+            .then(response => response.json())
+            .then(prediction => {
+                const pollutionLevelCell = document.querySelector(`#pollution-level-${i + 1}`);
+                const predictionInt = parseInt(prediction.prediction);
+                pollutionLevelCell.textContent = predictionInt + " PM10";
+            })
+            .catch(error => console.error(error));
+    }
+</script>
+</body>
+</html>

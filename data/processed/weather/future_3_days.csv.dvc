@@ -1,0 +1,4 @@
+outs:
+- md5: fdb96673934391388755071883e3d437
+  size: 315
+  path: future_3_days.csv
